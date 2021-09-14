@@ -1,0 +1,241 @@
+# -*- coding: utf-8 -*-
+"""
+Spyder Editor
+
+"""
+
+# Data set was created utilizing several sources. See end of document for citations
+
+#import relevant packages
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+import statsmodels.api as sm
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+from sklearn import datasets, linear_model
+from sklearn.metrics import mean_squared_error, r2_score, explained_variance_score
+
+
+
+
+
+
+
+# Load created data set as a dataframe, use date field as index
+financial_df = pd.read_csv("Data.csv", index_col = "Date")
+
+# Review first rows of dataframe
+financial_df.head()
+
+# Last four columns represent dependent variables
+# Certain data have independent variables for both "Seasonally Adjusted" and "Unadjusted"
+# Prior to assessing further, generate linear regression plot for all variables
+# For those data with "Seasonally Adjusted" and "Unadjusted", include on single plot
+
+i = 0
+while i in range(len(financial_df.columns) - 4):
+    for index in financial_df.columns[-4:]:
+        if financial_df.columns[i].endswith("Seasonally Adjusted") and financial_df.columns[i + 1].endswith("Unadjusted"):
+            sns.regplot(x=financial_df.columns[i], y=index, data = financial_df, color = "blue")
+            sns.regplot(x=financial_df.columns[i+1], y=index, data = financial_df, color = "red")
+            plt.title("Plot of " + financial_df.columns[i] + " and Unadjusted vs " + index)
+        
+            i += 2
+        else:
+            sns.regplot(x=financial_df.columns[i], y=index, data = financial_df, color = "blue")
+            plt.title("Plot of " + financial_df.columns[i] + " vs "+ index, color = "blue")
+            i += 1
+        plt.show()
+
+# To deal with one independent variable, will keep only S&P 500
+
+financial_df.drop(financial_df.columns[[-4, -3, -2]], axis=1, inplace = True)
+
+# Standardize independent variables
+
+normalized_df=(financial_df - financial_df.mean())/financial_df.std()
+
+# Determine which variables, if any, have missing fields
+
+normalized_df.isnull().any()
+
+# Variables with missing data are missing data due to 1 of 2 reasons
+#   Missing data due to data available only at periodic intervals (GDP)
+#   Missing data as data is only available after a certain date
+# In the case of GDP we will front fill, taking the most recently available data and propogating forward
+# In other cases we will backfill, taking the first available data and propogating backwards
+# Note that in this case these functions do not conflict when running "ffill" first and "bfill" second
+
+normalized_df = normalized_df.fillna(method='ffill')
+
+normalized_df = normalized_df.fillna(method='bfill')
+
+normalized_df.isnull().any()
+
+# Determine correlation coefficient for each variable
+# Display both as a table and a heatmap
+
+corr = normalized_df.corr()
+sns.heatmap(corr,xticklabels = corr.columns, yticklabels=corr.columns, cmap = "RdBu")
+plt.title("Correlation Among All Variables")
+plt.show()
+
+# Calculate VIF among independent variables to determine level of correlation
+# First define a function
+
+def calculate_vif(dataset):
+    vif = pd.DataFrame()
+    vif["ind_var"] = dataset.columns
+    vif["VIF_value"] = [variance_inflation_factor(dataset.values, i) for i in range(dataset.shape[1])]
+    return(vif)
+
+ind_var = normalized_df.iloc[:,:-1]
+
+print("INITIAL DATA SET")
+print("-" * 100)
+display(calculate_vif(ind_var))
+
+# VIF is extremely high and out of range of acceptable levels. This was expected based on correlation coefficients
+
+# Note: Additional work was done to determine which variables to remove
+# Variables were ranked based on correlation coefficient to independent variable
+# Variables that reflected a moderate or high correlation directly to another variable but a lower correlation coefficinet to independent variable were removed
+
+normalized_df = normalized_df.iloc[:,[12,16,20,30,31,-1]]
+
+ind_var = normalized_df.iloc[:,:-1]
+
+print("FINAL DATA SET")
+print("-" * 100)
+display(calculate_vif(ind_var))
+
+
+# Determine correlation coefficient for each variable from finalized data set
+# Display both as a table and a heatmap
+
+corr = normalized_df.corr()
+sns.heatmap(corr,xticklabels = corr.columns, yticklabels=corr.columns, cmap = "RdBu")
+plt.title("Correlation Among Final Variables")
+plt.show()
+
+
+# Create Multiple Linear Regression using sklearn and statsmodels
+
+X = ind_var
+y = normalized_df["S&P 500"]
+
+regr = linear_model.LinearRegression()
+regr.fit(X, y) 
+
+regr.score(X,y)
+
+
+regr.coef_
+
+
+regr.intercept_
+
+
+# Using statsmodels
+
+X = sm.add_constant(X)
+est = sm.OLS(y, X).fit()
+
+# Print out the statistics
+
+est.summary()
+
+
+# The Prob(F) reflects a low liklihood that all variables are 0
+# R^2 of 96.4% and R of 97.5% reflect that the variables account for a large amount of the change in S&P 500
+#   as well as that there is a strong correlation between the model and S&P 500
+# Additional modification can be completed to convert variables to categorical variables and conduct logistic regression
+# Important notes: The above process was intended to go through some basic processes and is not intended to represent an accurate model
+
+
+
+
+"""
+Citations
+
+Board of Governors of the Federal Reserve System (US). (n.d.). 4-Week Treasury Bill: Secondary Market Rate [TB4WK], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/TB4WK
+
+Board of Governors of the Federal Reserve System (US). (n.d.). 3-Month Treasury Bill, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/TB3MS
+
+Board of Governors of the Federal Reserve System (US). (n.d.). 6-Month Treasury Bill: Secondary Market Rate [TB6MS], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/TB6MS
+
+Board of Governors of the Federal Reserve System (US). (n.d.). Effective Federal Funds Rate [FEDFUNDS], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/FEDFUNDS
+
+Board of Governors of the Federal Reserve System (US). (n.d.). Gross Domestic Product [GDP], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/GDP
+
+Board of Governors of the Federal Reserve System (US). (n.d.). M1 Money Stock [M1NS], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/M1NS
+
+Board of Governors of the Federal Reserve System (US). (n.d.). M1 Money Stock [M1SL], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/M1SL
+
+Board of Governors of the Federal Reserve System (US). (n.d.). M2 Money Stock [M2NS], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/M2NS
+
+Board of Governors of the Federal Reserve System (US). (n.d.). M2 Money Stock [M2SL], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/M2SL
+
+Board of Governors of the Federal Reserve System (US). (n.d.). Trade Weighted U.S. Dollar Index: Broad, Goods and Services [DTWEXBGS], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://fred.stlouisfed.org/series/DTWEXBGS
+
+Moody's. (n.d.).  Moody's Seasoned Aaa Corporate Bond Yield [AAA], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis;  https://fred.stlouisfed.org/series/AAA
+
+Moody's. (n.d.).  Moody's Seasoned Baa Corporate Bond Yield [BAA], 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis;  https://fred.stlouisfed.org/series/BAA
+
+Yahoo! Finance. (n.d.). Dow Jones Composite Average, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://finance.yahoo.com/quote/\^DJA/
+
+Yahoo! Finance. (n.d.). Dow Jones Industrial Average, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://finance.yahoo.com/quote/\^DJI/
+
+Yahoo! Finance. (n.d.). NASDAQ Composite, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://finance.yahoo.com/quote/\^IXIC/
+
+Yahoo! Finance. (n.d.). S\&P 500, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://finance.yahoo.com/quote/\^GSPC/
+
+Yahoo! Finance. (n.d.). US Dollar/USDX, 2000-2020 [Data set]. Retrieved December 12, 2020 from FRED, Federal Reserve Bank of St. Louis; https://finance.yahoo.com/quote/DX-Y.NYB/
+
+U.S. Bureau of Labor Statistics. (n.d.). All items in U.S. city average, all urban consumers, not seasonally adjusted, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/CUUR0000SA0
+
+U.S. Bureau of Labor Statistics. (n.d.). All items in U.S. city average, all urban consumers, seasonally adjusted, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/CUSR0000SA0
+
+U.S. Bureau of Labor Statistics. (n.d.). \emph{Concepts and Definitions}. Retrieved December 31, 2020, from https://www.bls.gov/cps/definitions.htm
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Employment Level, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNS12000000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Employment Level, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNU02000000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Employment-Population Ratio, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNS12300000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Employment-Population Ratio, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNU02300000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Hires level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000HIL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Hires Level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000HIL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Hires rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000HIR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Hires rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000HIR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Job openings level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000JOL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Job openings level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000JOL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Job openings rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000JOR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Job openings rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000JOR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Separations Level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000TSL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Separations Level, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000TSL
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Separations rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTS000000000000000TSR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Separations rate, Total Nonfarm, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/JTU000000000000000TSR
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Unemployment Level, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNS13000000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Unemployment Level, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNU03000000Q
+
+U.S. Bureau of Labor Statistics. (n.d.). (Seas) Unemployment Rate, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNS14000000
+
+U.S. Bureau of Labor Statistics. (n.d.). (Unadj) Unemployment Rate, 2000-2020 [Data set]. Retrieved December 12, 2020, from https://beta.bls.gov/dataViewer/view/timeseries/LNU04000000
+
+"""
